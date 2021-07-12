@@ -19,6 +19,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -33,6 +34,8 @@ var (
 		"kubernetes-retired",
 		"kubernetes-sigs",
 	}
+
+	orgConfigPathFormat = "config/%s/org.yaml"
 )
 
 type Options struct {
@@ -45,8 +48,49 @@ type Options struct {
 	Teams []string
 }
 
-func AddMemberToOrgs(username string, orgs []string) error {
-	return errors.New("not implemented")
+func AddMemberToOrgs(username string, options Options) error {
+	_, invalidOrgs, invalidPresent := validateOrgs(options.Orgs)
+	if invalidPresent {
+		return fmt.Errorf("specified invalid orgs: %s", strings.Join(invalidOrgs, ", "))
+	}
+
+	if !options.Confirm {
+		fmt.Println("!!! running in dry-run mode. pass --confirm to persist changes.")
+	}
+
+	configsModified := []string{}
+	for _, org := range options.Orgs {
+		relativeConfigPath := fmt.Sprintf(orgConfigPathFormat, org)
+		configPath := filepath.Join(options.OrgRoot, relativeConfigPath)
+		config, err := readConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("reading config: %s", err)
+		}
+
+		if stringInSlice(config.Members, username) {
+			return fmt.Errorf("user %s already exists in org %s", username, org)
+		}
+
+		newMembers := append(config.Members, username)
+		config.Members = newMembers
+		caseAgnosticSort(config.Members)
+
+		if options.Confirm {
+			if err := saveConfig(configPath, config); err != nil {
+				return fmt.Errorf("saving config: %s", err)
+			}
+		}
+
+		configsModified = append(configsModified, relativeConfigPath)
+	}
+
+	if options.Confirm {
+		message := fmt.Sprintf("add %s to %s", username, strings.Join(options.Orgs, ", "))
+		if err := commitChanges(options.OrgRoot, configsModified, message); err != nil {
+			return fmt.Errorf("committing changes: %s", err)
+		}
+	}
+	return nil
 }
 
 func AddMemberToTeams(username string, teams []string) error {
@@ -76,22 +120,17 @@ func main() {
 				return fmt.Errorf("please specify either --org or --team or both")
 			}
 
-			invalidOrgs := []string{}
-			for _, org := range o.Orgs {
-				if !stringInSlice(validOrgs, org) {
-					invalidOrgs = append(invalidOrgs, org)
-				}
-			}
-			if len(invalidOrgs) > 0 {
+			_, invalidOrgs, invalidPresent := validateOrgs(o.Orgs)
+			if invalidPresent {
 				return fmt.Errorf("specified invalid orgs: %s", strings.Join(invalidOrgs, ", "))
 			}
 
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			user := args[1]
+			user := args[0]
 			if len(o.Orgs) > 0 {
-				return AddMemberToOrgs(user, o.Orgs)
+				return AddMemberToOrgs(user, o)
 			}
 
 			if len(o.Orgs) > 0 {

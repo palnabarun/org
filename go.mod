@@ -4,16 +4,12 @@ go 1.13
 
 require (
 	github.com/ghodss/yaml v1.0.0
-	github.com/kr/text v0.2.0 // indirect
+	github.com/go-git/go-git/v5 v5.4.2
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/cobra v0.0.5
-	github.com/stretchr/testify v1.7.0 // indirect
-	golang.org/x/net v0.0.0-20210326060303-6b1517762897 // indirect
-	golang.org/x/sys v0.0.0-20210502180810-71e4cd670f79 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
-	gopkg.in/yaml.v2 v2.3.0 // indirect
 	k8s.io/apimachinery v0.0.0-20190817020851-f2f3a405f61d
 	k8s.io/test-infra v0.0.0-20191222193732-de81526abe72
+	sigs.k8s.io/yaml v1.1.0
 )
 
 // Pin all k8s.io staging repositories to kubernetes-1.15.3.
