@@ -37,12 +37,38 @@ var (
 
 	orgConfigPathFormat         = "config/%s/org.yaml"
 	nestedTeamsConfigPathFormat = "config/%s/%s/teams.yaml"
+
+	addHelpText = `
+Adds users to GitHub orgs and/or teams
+
+Add user to specified orgs:
+
+	korg add <github username> --org kubernetes --org kubernetes-sigs
+	korg add <github username> --org kubernetes,kubernetes-sigs
+
+Add user to specified team:
+
+For teams at the org config level:
+
+	korg add <github username> --team kubernetes/maintainers
+
+For teams nested inside group directories:
+
+	korg add <github username> --team kubernetes/sig-release/milestone-maintainers
+
+Add an user to org and team at the same time:
+
+	korg add <github username> --org kubernetes --team kubernetes/maintainers
+
+
+Note: The user needs to be a member of the org which the specified teams reside in.
+	`
 )
 
 type Options struct {
 	// global options
-	Confirm bool
-	OrgRoot string
+	Confirm  bool
+	RepoRoot string
 
 	// add options
 	Orgs  []string
@@ -61,8 +87,9 @@ func AddMemberToOrgs(username string, options Options) error {
 
 	configsModified := []string{}
 	for _, org := range options.Orgs {
+		fmt.Printf("adding %s to %s org\n", username, org)
 		relativeConfigPath := fmt.Sprintf(orgConfigPathFormat, org)
-		configPath := filepath.Join(options.OrgRoot, relativeConfigPath)
+		configPath := filepath.Join(options.RepoRoot, relativeConfigPath)
 		config, err := readConfig(configPath)
 		if err != nil {
 			return fmt.Errorf("reading config: %s", err)
@@ -77,6 +104,7 @@ func AddMemberToOrgs(username string, options Options) error {
 		caseAgnosticSort(config.Members)
 
 		if options.Confirm {
+			fmt.Printf("saving config for %s org\n", org)
 			if err := saveConfig(configPath, config); err != nil {
 				return fmt.Errorf("saving config: %s", err)
 			}
@@ -86,8 +114,9 @@ func AddMemberToOrgs(username string, options Options) error {
 	}
 
 	if options.Confirm {
+		fmt.Println("committing changes")
 		message := fmt.Sprintf("add %s to %s", username, strings.Join(options.Orgs, ", "))
-		if err := commitChanges(options.OrgRoot, configsModified, message); err != nil {
+		if err := commitChanges(options.RepoRoot, configsModified, message); err != nil {
 			return fmt.Errorf("committing changes: %s", err)
 		}
 	}
@@ -101,6 +130,7 @@ func AddMemberToTeams(username string, options Options) error {
 
 	configsModified := []string{}
 	for _, team := range options.Teams {
+		fmt.Printf("adding %s to %s team\n", username, team)
 		org, group, team, err := parseTeam(team)
 		if err != nil {
 			return fmt.Errorf("unable to parse team: %s", err)
@@ -116,7 +146,7 @@ func AddMemberToTeams(username string, options Options) error {
 		} else {
 			relativeConfigPath = fmt.Sprintf(nestedTeamsConfigPathFormat, org, group)
 		}
-		configPath := filepath.Join(options.OrgRoot, relativeConfigPath)
+		configPath := filepath.Join(options.RepoRoot, relativeConfigPath)
 		config, err := readConfig(configPath)
 		if err != nil {
 			return fmt.Errorf("reading config: %s", err)
@@ -137,6 +167,7 @@ func AddMemberToTeams(username string, options Options) error {
 		config.Teams[team] = teamConfig
 
 		if options.Confirm {
+			fmt.Printf("saving config for %s/%s/%s team\n", org, group, team)
 			if err := saveConfig(configPath, config); err != nil {
 				return fmt.Errorf("saving config: %s", err)
 			}
@@ -146,8 +177,9 @@ func AddMemberToTeams(username string, options Options) error {
 	}
 
 	if options.Confirm {
+		fmt.Println("committing changes")
 		message := fmt.Sprintf("add %s to %s", username, strings.Join(options.Teams, ", "))
-		if err := commitChanges(options.OrgRoot, configsModified, message); err != nil {
+		if err := commitChanges(options.RepoRoot, configsModified, message); err != nil {
 			return fmt.Errorf("committing changes: %s", err)
 		}
 	}
@@ -158,16 +190,17 @@ func AddMemberToTeams(username string, options Options) error {
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "korg",
-		Short: "Manage kubernetes organizations",
+		Short: "Manage Kubernetes community owned GitHub organizations",
 	}
 
 	o := Options{}
 	rootCmd.PersistentFlags().BoolVar(&o.Confirm, "confirm", false, "confirm the changes")
-	rootCmd.PersistentFlags().StringVar(&o.OrgRoot, "root", ".", "root of the k/org repo")
+	rootCmd.PersistentFlags().StringVar(&o.RepoRoot, "root", ".", "root of the k/org repo")
 
 	addCmd := &cobra.Command{
 		Use:   "add",
-		Short: "Add members to org or teams",
+		Short: "Add members to org and/or teams",
+		Long:  addHelpText,
 		Args:  cobra.ExactArgs(1),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 1 {

@@ -169,7 +169,7 @@ func parseTeam(team string) (string, string, string, error) {
 }
 
 func userInOrg(username string, org string, options Options) bool {
-	configPath := filepath.Join(options.OrgRoot, fmt.Sprintf(orgConfigPathFormat, org))
+	configPath := filepath.Join(options.RepoRoot, fmt.Sprintf(orgConfigPathFormat, org))
 	config, err := readConfig(configPath)
 	if err != nil {
 		return false
