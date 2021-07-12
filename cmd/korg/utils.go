@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -141,4 +142,42 @@ func (s caseAgnostic) Less(i, j int) bool {
 
 func caseAgnosticSort(arr []string) {
 	sort.Sort(caseAgnostic(arr))
+}
+
+func parseTeam(team string) (string, string, string, error) {
+	parts := strings.Split(team, "/")
+	if len(parts) < 2 || len(parts) > 3 {
+		return "", "", "", fmt.Errorf("invalid team: %s", team)
+	}
+
+	org := parts[0]
+	if !stringInSlice(validOrgs, org) {
+		return "", "", "", fmt.Errorf("invalid team: %s", team)
+	}
+
+	group := ""
+	if len(parts) == 2 {
+		group = ""
+		team = parts[1]
+	} else {
+		group = parts[1]
+		team = parts[2]
+	}
+
+	return org, group, team, nil
+
+}
+
+func userInOrg(username string, org string, options Options) bool {
+	configPath := filepath.Join(options.OrgRoot, fmt.Sprintf(orgConfigPathFormat, org))
+	config, err := readConfig(configPath)
+	if err != nil {
+		return false
+	}
+
+	if !stringInSlice(config.Members, username) {
+		return false
+	}
+
+	return true
 }

@@ -17,8 +17,8 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -35,7 +35,8 @@ var (
 		"kubernetes-sigs",
 	}
 
-	orgConfigPathFormat = "config/%s/org.yaml"
+	orgConfigPathFormat         = "config/%s/org.yaml"
+	nestedTeamsConfigPathFormat = "config/%s/%s/teams.yaml"
 )
 
 type Options struct {
@@ -93,8 +94,65 @@ func AddMemberToOrgs(username string, options Options) error {
 	return nil
 }
 
-func AddMemberToTeams(username string, teams []string) error {
-	return errors.New("not implemented")
+func AddMemberToTeams(username string, options Options) error {
+	if !options.Confirm {
+		fmt.Println("!!! running in dry-run mode. pass --confirm to persist changes.")
+	}
+
+	configsModified := []string{}
+	for _, team := range options.Teams {
+		org, group, team, err := parseTeam(team)
+		if err != nil {
+			return fmt.Errorf("unable to parse team: %s", err)
+		}
+
+		if !userInOrg(username, org, options) {
+			return fmt.Errorf("user %s not a member of org %s", username, org)
+		}
+
+		var relativeConfigPath string
+		if group == "" {
+			relativeConfigPath = fmt.Sprintf(orgConfigPathFormat, org)
+		} else {
+			relativeConfigPath = fmt.Sprintf(nestedTeamsConfigPathFormat, org, group)
+		}
+		configPath := filepath.Join(options.OrgRoot, relativeConfigPath)
+		config, err := readConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("reading config: %s", err)
+		}
+
+		teamConfig, ok := config.Teams[team]
+		if !ok {
+			return fmt.Errorf("unable to fetch team: %s", team)
+		}
+
+		if stringInSlice(teamConfig.Members, username) {
+			return fmt.Errorf("user %s already exists in org %s", username, org)
+		}
+
+		newMembers := append(teamConfig.Members, username)
+		teamConfig.Members = newMembers
+		caseAgnosticSort(teamConfig.Members)
+		config.Teams[team] = teamConfig
+
+		if options.Confirm {
+			if err := saveConfig(configPath, config); err != nil {
+				return fmt.Errorf("saving config: %s", err)
+			}
+		}
+
+		configsModified = append(configsModified, relativeConfigPath)
+	}
+
+	if options.Confirm {
+		message := fmt.Sprintf("add %s to %s", username, strings.Join(options.Teams, ", "))
+		if err := commitChanges(options.OrgRoot, configsModified, message); err != nil {
+			return fmt.Errorf("committing changes: %s", err)
+		}
+	}
+
+	return nil
 }
 
 func main() {
@@ -129,12 +187,17 @@ func main() {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			user := args[0]
-			if len(o.Orgs) > 0 {
-				return AddMemberToOrgs(user, o)
-			}
 
 			if len(o.Orgs) > 0 {
-				return AddMemberToTeams(user, o.Teams)
+				if err := AddMemberToOrgs(user, o); err != nil {
+					return fmt.Errorf("failed to add %s to orgs %s: %s", user, o.Orgs, err)
+				}
+			}
+
+			if len(o.Teams) > 0 {
+				if err := AddMemberToTeams(user, o); err != nil {
+					return fmt.Errorf("failed to add %s to teams %s: %s", user, o.Teams, err)
+				}
 			}
 
 			return nil
