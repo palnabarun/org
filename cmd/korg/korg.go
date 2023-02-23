@@ -45,6 +45,13 @@ Add user to specified orgs:
 
 Note: Adding to teams is currently unsupported.
 	`
+
+	userinfoHelpText = `
+Gets organization and OWNERS file information for a user
+
+	korg userinfo <github username>
+	korg userinfo <github username1> <github username2> <github username3> ...
+	`
 )
 
 type Options struct {
@@ -148,7 +155,21 @@ func main() {
 
 	addCmd.Flags().StringSliceVar(&o.Orgs, "org", []string{}, "orgs to add the user to")
 	rootCmd.AddCommand(addCmd)
-	// Note: In future, add more korg commands remove/delete
+
+	userInfoCmd := &cobra.Command{
+		Use:   "userinfo",
+		Short: "Get information about user(s)",
+		Long:  userinfoHelpText,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			for _, user := range args {
+				findUserDetails(user)
+			}
+
+			return nil
+		},
+	}
+	rootCmd.AddCommand(userInfoCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
