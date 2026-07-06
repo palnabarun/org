@@ -260,15 +260,13 @@ func usernameNotInContributors(contribs map[string]Contribution, username string
 }
 
 func usernameBelowActivityThreshold(contribs map[string]Contribution, username string, activityThreshold int) bool {
-	if !usernameNotInContributors(contribs, username) {
+	contrib, found := contribs[username]
+	if !found {
+		// absence is handled by usernameNotInContributors; not "below threshold"
 		return false
 	}
 
-	if contribs[strings.ToLower(username)].ContribCount <= activityThreshold {
-		return true
-	}
-
-	return false
+	return contrib.ContribCount <= activityThreshold
 }
 
 func usernameInExceptions(exceptionalUsers []string, username string) bool {
