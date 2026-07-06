@@ -359,7 +359,15 @@ func ReadExceptions(filepath string) ([]Exception, error) {
 		return exceptions, err
 	}
 
-	for _, record := range records[1:] {
+	if len(records) == 0 {
+		return exceptions, nil
+	}
+
+	// records[0] is the header row.
+	for i, record := range records[1:] {
+		if len(record) < 2 {
+			return nil, fmt.Errorf("exceptions file row %d: expected 2 columns (username, reason), got %d", i+2, len(record))
+		}
 		exceptions = append(exceptions, Exception{Username: record[0], Reason: record[1]})
 	}
 
@@ -470,12 +478,17 @@ func OrgAudit(o Options) error {
 	fmt.Println("Total \"Org Members\":", len(users))
 	fmt.Println("Total \"Org Members\" below threshold after exceptions:", len(orgMembersBelowThresholdAfterException))
 
-	f, err := os.Create(o.OutputFile)
-	if err != nil {
-		return err
+	var out io.Writer = os.Stdout
+	if o.OutputFile != "" {
+		f, err := os.Create(o.OutputFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		out = f
 	}
 
-	w := bufio.NewWriter(f)
+	w := bufio.NewWriter(out)
 	table := tablewriter.NewWriter(w)
 	table.SetAutoWrapText(false)
 
@@ -517,7 +530,9 @@ func OrgAudit(o Options) error {
 	}
 	table.Render()
 
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("writing audit output: %w", err)
+	}
 
 	return nil
 }

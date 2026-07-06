@@ -97,3 +97,32 @@ func TestUsernameInExceptions_IsCaseInsensitive(t *testing.T) {
 		t.Fatalf("Alice should match the exception 'alice' case-insensitively")
 	}
 }
+
+// An empty exceptions file must not panic (was records[1:] on an empty slice).
+func TestReadExceptions_EmptyFileDoesNotPanic(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.csv")
+	if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ReadExceptions(path)
+	if err != nil {
+		t.Fatalf("empty exceptions file should not error, got %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected no exceptions, got %d", len(got))
+	}
+}
+
+// A row without a reason column must error, not panic (was record[1] on a
+// single-element slice).
+func TestReadExceptions_ShortRowReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "short.csv")
+	if err := os.WriteFile(path, []byte("username\nalice\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ReadExceptions(path); err == nil {
+		t.Fatalf("expected an error for a row without a reason column, got nil")
+	}
+}
