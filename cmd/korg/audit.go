@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/sirupsen/logrus"
 )
 
 type Contribution struct {
@@ -172,21 +173,35 @@ func combineContributions(period string, sources []devstatsSource) (map[string]C
 	wg.Wait()
 
 	combined := make(map[string]Contribution)
+	var sourceErrs []string
 	for _, r := range results {
 		if r.err != nil {
-			return nil, fmt.Errorf("fetching contributions from %s: %w", r.source.Name, r.err)
+			// Degrade gracefully: warn and keep going so a single unhealthy
+			// source does not sink the whole audit.
+			logrus.Warnf("skipping devstats source %s: %v", r.source.Name, r.err)
+			sourceErrs = append(sourceErrs, fmt.Sprintf("%s: %v", r.source.Name, r.err))
+			continue
 		}
 
 		for username, contrib := range r.contribs {
 			if existing, found := combined[username]; found {
 				existing.ContribCount += contrib.ContribCount
 				combined[username] = existing
-				fmt.Printf("Merged user %s from %s: new total = %d\n", username, r.source.Name, existing.ContribCount)
 			} else {
 				combined[username] = contrib
-				fmt.Printf("Added user %s from %s with %d contributions\n", username, r.source.Name, contrib.ContribCount)
 			}
 		}
+		fmt.Printf("fetched %d contributors from %s\n", len(r.contribs), r.source.Name)
+	}
+
+	// Refuse to proceed on an empty contributor set: otherwise every member
+	// would be flagged as inactive (e.g. an invalid --period, or all sources
+	// down).
+	if len(combined) == 0 {
+		if len(sourceErrs) > 0 {
+			return nil, fmt.Errorf("no contributors fetched from devstats: %s", strings.Join(sourceErrs, "; "))
+		}
+		return nil, fmt.Errorf("devstats returned no contributors (check --period)")
 	}
 
 	fmt.Printf("Total combined unique contributors: %d\n", len(combined))

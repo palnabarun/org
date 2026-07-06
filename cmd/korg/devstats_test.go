@@ -105,6 +105,53 @@ func TestFetchContributionsFromDevStats_RetriesOnServerError(t *testing.T) {
 	}
 }
 
+// One failing source must not sink the whole audit.
+func TestCombineContributions_ContinuesWhenOneSourceFails(t *testing.T) {
+	restore := devstatsRetryBackoff
+	devstatsRetryBackoff = time.Millisecond
+	defer func() { devstatsRetryBackoff = restore }()
+
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"results":{"A":{"frames":[{"data":{"values":[[1],["alice"],[5]]}}]}}}`)
+	}))
+	defer good.Close()
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer bad.Close()
+
+	sources := []devstatsSource{
+		{URL: good.URL, Name: "good", DatasourceID: 1},
+		{URL: bad.URL, Name: "bad", DatasourceID: 1},
+	}
+
+	combined, err := combineContributions("y", sources)
+	if err != nil {
+		t.Fatalf("expected to continue despite one failing source, got %v", err)
+	}
+	if _, ok := combined["alice"]; !ok {
+		t.Fatalf("expected contributor data from the healthy source")
+	}
+}
+
+// A well-formed but empty result (e.g. an invalid --period) must be treated as
+// an error rather than silently flagging every member as inactive.
+func TestCombineContributions_ErrorsWhenNoContributors(t *testing.T) {
+	restore := devstatsRetryBackoff
+	devstatsRetryBackoff = time.Millisecond
+	defer func() { devstatsRetryBackoff = restore }()
+
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"results":{"A":{"frames":[{"data":{"values":[[],[],[]]}}]}}}`)
+	}))
+	defer empty.Close()
+
+	sources := []devstatsSource{{URL: empty.URL, Name: "empty", DatasourceID: 1}}
+	if _, err := combineContributions("y", sources); err == nil {
+		t.Fatalf("expected an error when devstats returns zero contributors")
+	}
+}
+
 func keysOf(m map[string]Contribution) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
