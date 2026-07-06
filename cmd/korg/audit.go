@@ -22,11 +22,14 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"context"
 	"io"
 	"net/http"
 	"os"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/olekukonko/tablewriter"
 )
@@ -137,23 +140,51 @@ var devstatsSources = []devstatsSource{
 	{URL: "https://etcd.devstats.cncf.io/api/ds/query", Name: "etcd", DatasourceID: 1},
 }
 
-func GetContributions(period string) (map[string]Contribution, error) {
-	combined := make(map[string]Contribution)
+var (
+	devstatsHTTPClient   = &http.Client{}
+	devstatsHTTPTimeout  = 30 * time.Second
+	devstatsMaxRetries   = 3
+	devstatsRetryBackoff = 500 * time.Millisecond
+)
 
-	for _, source := range devstatsSources {
-		contribs, err := fetchContributionsFromDevStats(period, source)
-		if err != nil {
-			return nil, err
+func GetContributions(period string) (map[string]Contribution, error) {
+	return combineContributions(period, devstatsSources)
+}
+
+func combineContributions(period string, sources []devstatsSource) (map[string]Contribution, error) {
+	type sourceResult struct {
+		source   devstatsSource
+		contribs map[string]Contribution
+		err      error
+	}
+
+	// Fetch the (independent) sources concurrently.
+	results := make([]sourceResult, len(sources))
+	var wg sync.WaitGroup
+	for i, source := range sources {
+		wg.Add(1)
+		go func(i int, source devstatsSource) {
+			defer wg.Done()
+			contribs, err := fetchContributionsFromDevStats(period, source)
+			results[i] = sourceResult{source: source, contribs: contribs, err: err}
+		}(i, source)
+	}
+	wg.Wait()
+
+	combined := make(map[string]Contribution)
+	for _, r := range results {
+		if r.err != nil {
+			return nil, fmt.Errorf("fetching contributions from %s: %w", r.source.Name, r.err)
 		}
 
-		for username, contrib := range contribs {
+		for username, contrib := range r.contribs {
 			if existing, found := combined[username]; found {
 				existing.ContribCount += contrib.ContribCount
 				combined[username] = existing
-				fmt.Printf("Merged user %s from %s: new total = %d\n", username, source.Name, existing.ContribCount)
+				fmt.Printf("Merged user %s from %s: new total = %d\n", username, r.source.Name, existing.ContribCount)
 			} else {
 				combined[username] = contrib
-				fmt.Printf("Added user %s from %s with %d contributions\n", username, source.Name, contrib.ContribCount)
+				fmt.Printf("Added user %s from %s with %d contributions\n", username, r.source.Name, contrib.ContribCount)
 			}
 		}
 	}
@@ -196,22 +227,52 @@ from (
 		return nil, err
 	}
 
-	resp, err := http.Post(source.URL, "application/json", bytes.NewBuffer(requestBody))
+	var lastErr error
+	for attempt := 0; attempt < devstatsMaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(devstatsRetryBackoff * time.Duration(attempt))
+		}
+
+		body, err := doDevStatsRequest(source.URL, requestBody)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		return parseDevStatsResponse(body)
+	}
+
+	return nil, fmt.Errorf("devstats request to %s failed after %d attempts: %w", source.URL, devstatsMaxRetries, lastErr)
+}
+
+// doDevStatsRequest performs a single POST to a devstats endpoint and returns
+// the response body, or an error for a transport failure or a non-200 status.
+func doDevStatsRequest(url string, requestBody []byte) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), devstatsHTTPTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(requestBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := devstatsHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bad error code from devstats: %d: %w", resp.StatusCode, err)
-	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	return parseDevStatsResponse(body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("devstats returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	return body, nil
 }
 
 func parseDevStatsResponse(body []byte) (map[string]Contribution, error) {

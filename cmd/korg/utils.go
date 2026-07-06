@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/sirupsen/logrus"
@@ -136,9 +137,11 @@ func caseAgnosticSort(arr []string) {
 	})
 }
 
+var ownersHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 func IsOwner(username string) (bool, error) {
 	url := fmt.Sprintf("https://cs.k8s.io/api/v1/search?stats=fosho&repos=*&rng=:20&q=%s&i=fosho&files=OWNERS&excludeFiles=vendor/", username)
-	resp, err := http.Get(url)
+	resp, err := ownersHTTPClient.Get(url)
 	if err != nil {
 		return false, err
 	}

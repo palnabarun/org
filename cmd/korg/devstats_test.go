@@ -17,7 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestParseDevStatsResponse_ValidBody(t *testing.T) {
@@ -68,6 +73,35 @@ func TestParseDevStatsResponse_Malformed(t *testing.T) {
 				t.Fatalf("expected an error for a malformed devstats response, got nil")
 			}
 		})
+	}
+}
+
+// Transient devstats failures should be retried.
+func TestFetchContributionsFromDevStats_RetriesOnServerError(t *testing.T) {
+	restore := devstatsRetryBackoff
+	devstatsRetryBackoff = time.Millisecond
+	defer func() { devstatsRetryBackoff = restore }()
+
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) < 3 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		io.WriteString(w, `{"results":{"A":{"frames":[{"data":{"values":[[1],["alice"],[5]]}}]}}}`)
+	}))
+	defer srv.Close()
+
+	source := devstatsSource{URL: srv.URL, Name: "test", DatasourceID: 1}
+	contribs, err := fetchContributionsFromDevStats("y", source)
+	if err != nil {
+		t.Fatalf("expected success after retries, got %v", err)
+	}
+	if _, ok := contribs["alice"]; !ok {
+		t.Fatalf("expected alice after a successful retry")
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Fatalf("expected 3 attempts (2 failures then success), got %d", got)
 	}
 }
 
