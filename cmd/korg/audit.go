@@ -220,21 +220,53 @@ func parseDevStatsResponse(body []byte) (map[string]Contribution, error) {
 		return nil, fmt.Errorf("unable to parse json from devstats: %w", err)
 	}
 
-	ranks := parsed["results"]["A"]["frames"][0].Data.Items[0]
-	usernames := parsed["results"]["A"]["frames"][0].Data.Items[1]
-	contribCounts := parsed["results"]["A"]["frames"][0].Data.Items[2]
+	// Reading a missing key from a nil map is safe and yields the zero value,
+	// so this chained lookup does not panic when intermediate keys are absent.
+	frames, ok := parsed["results"]["A"]["frames"]
+	if !ok || len(frames) == 0 {
+		return nil, fmt.Errorf("devstats response has no result frames")
+	}
+
+	columns := frames[0].Data.Items
+	if len(columns) < 3 {
+		return nil, fmt.Errorf("devstats response frame has %d columns, want at least 3 (rank, name, value)", len(columns))
+	}
+	ranks, usernames, contribCounts := columns[0], columns[1], columns[2]
+	if len(usernames) != len(ranks) || len(contribCounts) != len(ranks) {
+		return nil, fmt.Errorf("devstats response columns have mismatched lengths (ranks=%d, names=%d, values=%d)", len(ranks), len(usernames), len(contribCounts))
+	}
 
 	contribs := make(map[string]Contribution)
-	for i := 0; i < len(ranks); i++ {
-		username := usernames[i].(string)
+	for i := range ranks {
+		username, ok := usernames[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("devstats username at row %d is not a string", i)
+		}
+		rank, ok := toInt(ranks[i])
+		if !ok {
+			return nil, fmt.Errorf("devstats rank at row %d is not a number", i)
+		}
+		count, ok := toInt(contribCounts[i])
+		if !ok {
+			return nil, fmt.Errorf("devstats contribution count at row %d is not a number", i)
+		}
 		contribs[normalizeUser(username)] = Contribution{
-			Rank:         int(ranks[i].(float64)),
+			Rank:         rank,
 			Username:     username,
-			ContribCount: int(contribCounts[i].(float64)),
+			ContribCount: count,
 			Orgs:         []string{},
 		}
 	}
 	return contribs, nil
+}
+
+// toInt converts a JSON-decoded numeric value (always a float64) to an int.
+func toInt(v interface{}) (int, bool) {
+	f, ok := v.(float64)
+	if !ok {
+		return 0, false
+	}
+	return int(f), true
 }
 
 func ReadExceptions(filepath string) ([]Exception, error) {

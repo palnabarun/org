@@ -41,6 +41,36 @@ func TestParseDevStatsResponse_ValidBody(t *testing.T) {
 	}
 }
 
+// A devstats endpoint that returns a body which does not match the expected
+// shape (an error payload, empty frames, missing rows, or a wrongly typed cell)
+// must yield an error, not a panic.
+func TestParseDevStatsResponse_Malformed(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"empty object", `{}`},
+		{"empty frames", `{"results":{"A":{"frames":[]}}}`},
+		{"frame with no rows", `{"results":{"A":{"frames":[{"data":{"values":[]}}]}}}`},
+		{"non-numeric contribution count", `{"results":{"A":{"frames":[{"data":{"values":[[1],["alice"],["not-a-number"]]}}]}}}`},
+		{"mismatched column lengths", `{"results":{"A":{"frames":[{"data":{"values":[[1,2],["alice"],[5,6]]}}]}}}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("parseDevStatsResponse panicked on a malformed response (want a graceful error): %v", r)
+				}
+			}()
+
+			if _, err := parseDevStatsResponse([]byte(tc.body)); err == nil {
+				t.Fatalf("expected an error for a malformed devstats response, got nil")
+			}
+		})
+	}
+}
+
 func keysOf(m map[string]Contribution) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
