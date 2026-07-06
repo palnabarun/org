@@ -77,3 +77,23 @@ func TestGetAllUsersInOrgs_LoadsRequestedOrgsWithoutOrgFlag(t *testing.T) {
 		t.Fatalf("expected member alice to be loaded from the requested org even without --org, got %d users", len(users))
 	}
 }
+
+// GitHub logins are case-insensitive, and org.yaml, exceptions.csv and devstats
+// may disagree on casing. Lookups must be case-insensitive so a differently
+// cased member is not falsely reported as a non-contributor.
+func TestUsernameNotInContributors_IsCaseInsensitive(t *testing.T) {
+	contribs := map[string]Contribution{
+		"alice": {Username: "alice", ContribCount: 5},
+	}
+
+	if usernameNotInContributors(contribs, "Alice") {
+		t.Fatalf("Alice should match contributor alice case-insensitively")
+	}
+}
+
+// A differently cased exception entry must still match.
+func TestUsernameInExceptions_IsCaseInsensitive(t *testing.T) {
+	if !usernameInExceptions([]string{"alice"}, "Alice") {
+		t.Fatalf("Alice should match the exception 'alice' case-insensitively")
+	}
+}

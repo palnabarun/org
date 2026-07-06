@@ -222,7 +222,7 @@ from (
 	contribs := make(map[string]Contribution)
 	for i := 0; i < len(ranks); i++ {
 		username := usernames[i].(string)
-		contribs[username] = Contribution{
+		contribs[normalizeUser(username)] = Contribution{
 			Rank:         int(ranks[i].(float64)),
 			Username:     username,
 			ContribCount: int(contribCounts[i].(float64)),
@@ -254,13 +254,13 @@ func ReadExceptions(filepath string) ([]Exception, error) {
 }
 
 func usernameNotInContributors(contribs map[string]Contribution, username string) bool {
-	_, found := contribs[username]
+	_, found := contribs[normalizeUser(username)]
 
 	return !found
 }
 
 func usernameBelowActivityThreshold(contribs map[string]Contribution, username string, activityThreshold int) bool {
-	contrib, found := contribs[username]
+	contrib, found := contribs[normalizeUser(username)]
 	if !found {
 		// absence is handled by usernameNotInContributors; not "below threshold"
 		return false
@@ -271,7 +271,7 @@ func usernameBelowActivityThreshold(contribs map[string]Contribution, username s
 
 func usernameInExceptions(exceptionalUsers []string, username string) bool {
 	for _, exceptionalUser := range exceptionalUsers {
-		if exceptionalUser == username {
+		if normalizeUser(exceptionalUser) == normalizeUser(username) {
 			return true
 		}
 	}
@@ -329,10 +329,10 @@ func OrgAudit(o Options) error {
 		if usernameNotInContributors(contributions, userInfo.Username) ||
 			usernameBelowActivityThreshold(contributions, userInfo.Username, o.ActivityThreshold) {
 
-			userInfo.Contributions = contributions[userInfo.Username].ContribCount
+			userInfo.Contributions = contributions[normalizeUser(userInfo.Username)].ContribCount
 			orgMembersBelowThresholdAfterException = append(orgMembersBelowThresholdAfterException, userInfo)
 
-			fmt.Println("user below threshold or not in devstats:", userInfo.Username, " contributions: ", contributions[userInfo.Username].ContribCount)
+			fmt.Println("user below threshold or not in devstats:", userInfo.Username, " contributions: ", userInfo.Contributions)
 		}
 	}
 

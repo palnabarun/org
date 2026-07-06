@@ -34,6 +34,12 @@ import (
 	"github.com/hound-search/hound/client"
 )
 
+// normalizeUser returns a canonical key for a GitHub login so that lookups
+// across devstats, org.yaml and exceptions.csv are case-insensitive.
+func normalizeUser(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
+
 func stringInSlice(slice []string, key string) bool {
 	for _, e := range slice {
 		if key == e {
