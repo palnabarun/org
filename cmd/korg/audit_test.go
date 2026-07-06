@@ -39,7 +39,7 @@ func writeOrgConfig(t *testing.T, root, orgName, contents string) {
 // present in the contributions map and never compared the count.
 func TestUsernameBelowActivityThreshold_PresentMemberBelowThreshold(t *testing.T) {
 	contribs := map[string]Contribution{
-		"alice": {Username: "alice", ContribCount: 5},
+		"alice": {ContribCount: 5},
 	}
 
 	if !usernameBelowActivityThreshold(contribs, "alice", 100) {
@@ -51,7 +51,7 @@ func TestUsernameBelowActivityThreshold_PresentMemberBelowThreshold(t *testing.T
 // must not be flagged.
 func TestUsernameBelowActivityThreshold_PresentMemberAboveThreshold(t *testing.T) {
 	contribs := map[string]Contribution{
-		"alice": {Username: "alice", ContribCount: 500},
+		"alice": {ContribCount: 500},
 	}
 
 	if usernameBelowActivityThreshold(contribs, "alice", 100) {
@@ -83,7 +83,7 @@ func TestGetAllUsersInOrgs_LoadsRequestedOrgsWithoutOrgFlag(t *testing.T) {
 // cased member is not falsely reported as a non-contributor.
 func TestUsernameNotInContributors_IsCaseInsensitive(t *testing.T) {
 	contribs := map[string]Contribution{
-		"alice": {Username: "alice", ContribCount: 5},
+		"alice": {ContribCount: 5},
 	}
 
 	if usernameNotInContributors(contribs, "Alice") {

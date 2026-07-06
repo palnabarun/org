@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -42,24 +43,13 @@ func normalizeUser(username string) string {
 }
 
 func stringInSlice(slice []string, key string) bool {
-	for _, e := range slice {
-		if key == e {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(slice, key)
 }
 
-// Note for the future: once we bump to the latest go version, we can replace this with helpers from stdlib slice package
 func stringInSliceCaseAgnostic(slice []string, key string) bool {
-	for _, e := range slice {
-		if strings.EqualFold(key, e) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(slice, func(e string) bool {
+		return strings.EqualFold(key, e)
+	})
 }
 
 func findInvalidOrgs(orgs []string) []string {

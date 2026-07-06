@@ -19,10 +19,10 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"context"
 	"io"
 	"net/http"
 	"os"
@@ -36,10 +36,7 @@ import (
 )
 
 type Contribution struct {
-	Rank         int
-	Username     string
 	ContribCount int
-	Orgs         []string
 }
 
 type Values struct {
@@ -318,20 +315,11 @@ func parseDevStatsResponse(body []byte) (map[string]Contribution, error) {
 		if !ok {
 			return nil, fmt.Errorf("devstats username at row %d is not a string", i)
 		}
-		rank, ok := toInt(ranks[i])
-		if !ok {
-			return nil, fmt.Errorf("devstats rank at row %d is not a number", i)
-		}
 		count, ok := toInt(contribCounts[i])
 		if !ok {
 			return nil, fmt.Errorf("devstats contribution count at row %d is not a number", i)
 		}
-		contribs[normalizeUser(username)] = Contribution{
-			Rank:         rank,
-			Username:     username,
-			ContribCount: count,
-			Orgs:         []string{},
-		}
+		contribs[normalizeUser(username)] = Contribution{ContribCount: count}
 	}
 	return contribs, nil
 }

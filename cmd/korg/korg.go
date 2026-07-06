@@ -130,7 +130,7 @@ func main() {
 	o := Options{}
 	rootCmd.PersistentFlags().BoolVar(&o.Confirm, "confirm", false, "confirm the changes")
 	rootCmd.PersistentFlags().StringVar(&o.RepoRoot, "root", ".", "root of the k/org repo")
-	rootCmd.PersistentFlags().StringSliceVar(&o.Orgs, "org", []string{}, "orgs to add the user to")
+	rootCmd.PersistentFlags().StringSliceVar(&o.Orgs, "org", []string{}, "orgs to operate on")
 
 	addCmd := &cobra.Command{
 		Use:   "add",
@@ -184,9 +184,6 @@ func main() {
 		},
 	}
 
-	// korg remove flags
-	removeCmd.Flags().StringSliceVar(&o.Orgs, "org", []string{}, "orgs to remove the user from")
-
 	auditCmd := &cobra.Command{
 		Use:   "audit",
 		Short: "Audit GitHub org members",
@@ -212,7 +209,7 @@ func main() {
 	// korg audit flags
 	auditCmd.Flags().IntVar(&o.ActivityThreshold, "activity-threshold", 0, "minimum activity to be considered active. default: 0")
 	auditCmd.Flags().StringVar(&o.Period, "period", "y", "period to look back for activity. possible values are defined in https://github.com/cncf/devstats/blob/master/docs/periods.md. default: y (Year)")
-	auditCmd.Flags().StringVar(&o.OutputFile, "output-file", "", "parse owners files. default: none")
+	auditCmd.Flags().StringVar(&o.OutputFile, "output-file", "", "file to write the audit report to. default: stdout")
 	auditCmd.Flags().StringVar(&o.ExceptionsFile, "exceptions-file", "", "exceptions for removal. default: none")
 	auditCmd.Flags().BoolVar(&o.CheckOwners, "check-owners", false, "parse owners files. default: false")
 	auditCmd.Flags().BoolVar(&o.CheckTeams, "check-teams", false, "check which teams the user belongs to. default: false")
