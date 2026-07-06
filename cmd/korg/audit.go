@@ -124,35 +124,36 @@ func GetAllUsersInOrgs(o Options, orgs []string) (map[string]UserInfo, error) {
 	return users, nil
 }
 
-func GetContributions(period string) (map[string]Contribution, error) {
-	sources := []string{
-		"https://k8s.devstats.cncf.io/api/ds/query",
-		"https://etcd.devstats.cncf.io/api/ds/query",
-	}
+// devstatsSource identifies a CNCF devstats Grafana endpoint to pull
+// contribution data from.
+type devstatsSource struct {
+	URL          string
+	Name         string
+	DatasourceID int
+}
 
+var devstatsSources = []devstatsSource{
+	{URL: "https://k8s.devstats.cncf.io/api/ds/query", Name: "Kubernetes", DatasourceID: 1},
+	{URL: "https://etcd.devstats.cncf.io/api/ds/query", Name: "etcd", DatasourceID: 1},
+}
+
+func GetContributions(period string) (map[string]Contribution, error) {
 	combined := make(map[string]Contribution)
 
-	for _, url := range sources {
-		contribs, err := fetchContributionsFromDevStats(period, url)
+	for _, source := range devstatsSources {
+		contribs, err := fetchContributionsFromDevStats(period, source)
 		if err != nil {
 			return nil, err
-		}
-
-		sourceName := "unknown"
-		if strings.Contains(url, "k8s.devstats") {
-			sourceName = "Kubernetes"
-		} else if strings.Contains(url, "etcd.devstats") {
-			sourceName = "etcd"
 		}
 
 		for username, contrib := range contribs {
 			if existing, found := combined[username]; found {
 				existing.ContribCount += contrib.ContribCount
 				combined[username] = existing
-				fmt.Printf("Merged user %s from %s: new total = %d\n", username, sourceName, existing.ContribCount)
+				fmt.Printf("Merged user %s from %s: new total = %d\n", username, source.Name, existing.ContribCount)
 			} else {
 				combined[username] = contrib
-				fmt.Printf("Added user %s from %s with %d contributions\n", username, sourceName, contrib.ContribCount)
+				fmt.Printf("Added user %s from %s with %d contributions\n", username, source.Name, contrib.ContribCount)
 			}
 		}
 	}
@@ -161,14 +162,14 @@ func GetContributions(period string) (map[string]Contribution, error) {
 	return combined, nil
 }
 
-func fetchContributionsFromDevStats(period string, url string) (map[string]Contribution, error) {
-	fmt.Printf("Fetching contributions from %s\n", url)
+func fetchContributionsFromDevStats(period string, source devstatsSource) (map[string]Contribution, error) {
+	fmt.Printf("Fetching contributions from %s\n", source.URL)
 
 	postBody := DevStatsRequest{
 		Queries: []Query{
 			{
 				RefID:        "A",
-				DatasourceID: 1,
+				DatasourceID: source.DatasourceID,
 				RawSQL: fmt.Sprintf(`select
   sub."Rank",
   sub.name as name,
@@ -195,7 +196,7 @@ from (
 		return nil, err
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
+	resp, err := http.Post(source.URL, "application/json", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, err
 	}
@@ -205,13 +206,17 @@ from (
 		return nil, fmt.Errorf("bad error code from devstats: %d: %w", resp.StatusCode, err)
 	}
 
-	var parsed map[string]map[string]map[string][]Frames
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	err = json.Unmarshal(body, &parsed)
-	if err != nil {
+
+	return parseDevStatsResponse(body)
+}
+
+func parseDevStatsResponse(body []byte) (map[string]Contribution, error) {
+	var parsed map[string]map[string]map[string][]Frames
+	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("unable to parse json from devstats: %w", err)
 	}
 
