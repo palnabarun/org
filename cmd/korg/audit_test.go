@@ -17,8 +17,21 @@ limitations under the License.
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+func writeOrgConfig(t *testing.T, root, orgName, contents string) {
+	t.Helper()
+	dir := filepath.Join(root, "config", orgName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "org.yaml"), []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // A member who IS present in devstats but whose contribution count is below the
 // configured threshold must be reported as below-threshold. Because the guard in
@@ -43,5 +56,24 @@ func TestUsernameBelowActivityThreshold_PresentMemberAboveThreshold(t *testing.T
 
 	if usernameBelowActivityThreshold(contribs, "alice", 100) {
 		t.Fatalf("alice has 500 contributions against a threshold of 100: she must not be flagged as below threshold")
+	}
+}
+
+// GetAllUsersInOrgs must load the orgs it is asked to audit (validOrgs) rather
+// than only the orgs named by the --org flag. Otherwise a plain `korg audit`
+// (no --org) loads an empty config and reports zero members.
+func TestGetAllUsersInOrgs_LoadsRequestedOrgsWithoutOrgFlag(t *testing.T) {
+	dir := t.TempDir()
+	writeOrgConfig(t, dir, "kubernetes", "members:\n- alice\n")
+
+	// o.Orgs is intentionally empty, mimicking `korg audit` with no --org.
+	o := Options{RepoRoot: dir}
+	users, err := GetAllUsersInOrgs(o, []string{"kubernetes"})
+	if err != nil {
+		t.Fatalf("GetAllUsersInOrgs: %v", err)
+	}
+
+	if _, ok := users["alice"]; !ok {
+		t.Fatalf("expected member alice to be loaded from the requested org even without --org, got %d users", len(users))
 	}
 }

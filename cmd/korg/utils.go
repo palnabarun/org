@@ -171,9 +171,9 @@ func unmarshal(buf []byte) (*org.Config, error) {
 	return &cfg, nil
 }
 
-func LoadOrgs(o Options) (map[string]org.Config, error) {
+func LoadOrgs(o Options, orgs []string) (map[string]org.Config, error) {
 	config := map[string]org.Config{}
-	for _, orgName := range o.Orgs {
+	for _, orgName := range orgs {
 		path := fmt.Sprintf("%s/config/%s/org.yaml", o.RepoRoot, orgName)
 
 		cfg, err := unmarshalFromFile(path)

@@ -82,7 +82,7 @@ type Exception struct {
 
 func GetAllUsersInOrgs(o Options, orgs []string) (map[string]UserInfo, error) {
 	users := make(map[string]UserInfo)
-	config, err := LoadOrgs(o)
+	config, err := LoadOrgs(o, orgs)
 	if err != nil {
 		return nil, err
 	}
